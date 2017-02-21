@@ -1,14 +1,17 @@
 package sample.blog
 
+import java.util.UUID
+
 import scala.concurrent.duration._
 import akka.actor.ActorLogging
 import akka.actor.ActorRef
 import akka.actor.PoisonPill
 import akka.actor.Props
 import akka.actor.ReceiveTimeout
-import akka.cluster.sharding.ShardRegion
+import akka.cluster.sharding.{ClusterSharding, ShardRegion}
 import akka.cluster.sharding.ShardRegion.Passivate
 import akka.persistence.PersistentActor
+import sample.blog.AccountEntity.Account
 
 object Post {
 
@@ -34,7 +37,7 @@ object Post {
   case object PostPublished extends Event
 
   val idExtractor: ShardRegion.ExtractEntityId = {
-    case cmd: Command => (cmd.postId, cmd)
+    case cmd: Command => (cmd.postId+"topoftheworld", cmd)
   }
 
   val shardResolver: ShardRegion.ExtractShardId = {
@@ -59,12 +62,15 @@ class Post(authorListing: ActorRef) extends PersistentActor with ActorLogging {
 
   // self.path.parent.name is the type name (utf-8 URL-encoded) 
   // self.path.name is the entry identifier (utf-8 URL-encoded)
-  override def persistenceId: String = self.path.parent.name + "-" + self.path.name
+  override def persistenceId: String = self.path.parent.name + "----" + self.path.name
+
+  val accountRegion = ClusterSharding(context.system).shardRegion(AccountEntity.shardName)
 
   // passivate the entity when no activity
   context.setReceiveTimeout(2.minutes)
 
   private var state = State(PostContent.empty, false)
+  private var accountId = ""
 
   override def receiveRecover: Receive = {
     case evt: PostAdded =>
@@ -85,6 +91,11 @@ class Post(authorListing: ActorRef) extends PersistentActor with ActorLogging {
       if (content.author != "" && content.title != "")
         persist(PostAdded(content)) { evt =>
           state = state.updated(evt)
+
+          accountId = UUID.randomUUID().toString
+          log.info("New Account ID Generated ", accountId)
+          accountRegion ! AccountEntity.Create(Account(s"name-${accountId}",s"chs-${accountId}","ROOT",List("Anand","Nathan","Marek")),accountId)
+
           context.become(created)
           log.info("New post saved: {}", state.content.title)
         }
@@ -95,6 +106,7 @@ class Post(authorListing: ActorRef) extends PersistentActor with ActorLogging {
     case ChangeBody(_, body) =>
       persist(BodyChanged(body)) { evt =>
         state = state.updated(evt)
+        accountRegion ! AccountEntity.UpdateName(s"NewName-${accountId}",accountId)
         log.info("Post changed: {}", state.content.title)
       }
     case Publish(postId) =>
@@ -102,6 +114,7 @@ class Post(authorListing: ActorRef) extends PersistentActor with ActorLogging {
         state = state.updated(evt)
         context.become(published)
         val c = state.content
+        accountRegion ! AccountEntity.UpdateOwner(s"NewOwner-${accountId}",accountId)
         log.info("Post published: {}", c.title)
         authorListing ! AuthorListing.PostSummary(c.author, postId, c.title)
       }
