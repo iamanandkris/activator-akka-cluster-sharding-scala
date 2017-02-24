@@ -1,11 +1,12 @@
 package sample.blog
 
-import akka.actor.{ActorSystem, Props}
-import akka.cluster.sharding.{ClusterSharding, ClusterShardingSettings}
+import akka.actor.ActorSystem
 import com.typesafe.config.ConfigFactory
 
-
-object AccountApp {
+/**
+  * Created by anand on 24/02/17.
+  */
+object ClientApp {
   def main(args: Array[String]): Unit = {
     if (args.isEmpty)
       startup(Seq("2551", "2552", "0"))
@@ -30,17 +31,9 @@ object AccountApp {
         }""").withFallback(ConfigFactory.load())
 
       // Create an Akka system
-      val system = ActorSystem("ClusterSystem", config)
-
-      ClusterSharding(system).start(
-        typeName = AccountEntity.shardName,
-        entityProps = AccountEntity.props,
-        settings = ClusterShardingSettings(system),
-        extractEntityId = AccountEntity.idExtractor,
-        extractShardId = AccountEntity.shardResolver)
-
-      //system.actorOf(Receptionist.props, "receptionist")
-
+      val system = ActorSystem("AnotherActorSystem", config)
+      if (port != "2551" && port != "2552")
+        system.actorOf(Client.props, "client")
     }
   }
 }

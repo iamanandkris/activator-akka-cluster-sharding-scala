@@ -49,8 +49,8 @@ object BlogApp {
         extractEntityId = AccountEntity.idExtractor,
         extractShardId = AccountEntity.shardResolver)
 
-      if (port != "2551" && port != "2552")
-        system.actorOf(Props[Bot], "bot")
+      if (port == "2552")
+        system.actorOf(Receptionist.props, "receptionist")
     }
   }
 }
